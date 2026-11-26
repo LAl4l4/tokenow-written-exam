@@ -8,7 +8,7 @@ paths:
   /api/tasks:
     get:
       operationId: listTasks
-      summary: 按创建顺序列出全部任务，包括已完成任务
+      summary: 列出全部任务，子任务跟在父任务后，同级按优先级和创建顺序排列
       responses:
         "200":
           description: 任务列表；空列表为 []
@@ -30,6 +30,10 @@ paths:
               required: [title]
               properties:
                 title: { $ref: "#/components/schemas/Title" }
+                parentId: { $ref: "#/components/schemas/ParentId" }
+                dueAt: { $ref: "#/components/schemas/DueAt" }
+                priority: { $ref: "#/components/schemas/Priority" }
+                effort: { $ref: "#/components/schemas/Effort" }
       responses:
         "201":
           description: 新建的任务
@@ -37,6 +41,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/tasks/{id}:
     parameters:
       - name: id
@@ -45,7 +50,8 @@ paths:
         schema: { type: string }
     patch:
       operationId: updateTask
-      summary: 修改标题或完成状态
+      summary: 修改任务字段或完成状态
+      description: 完成或重新打开父任务会同步更新全部子任务。所有子任务完成后父任务自动完成，有子任务恢复为待办时父任务也恢复为待办。
       requestBody:
         required: true
         content:
@@ -57,6 +63,9 @@ paths:
               properties:
                 title: { $ref: "#/components/schemas/Title" }
                 done: { type: boolean }
+                dueAt: { $ref: "#/components/schemas/DueAt" }
+                priority: { $ref: "#/components/schemas/Priority" }
+                effort: { $ref: "#/components/schemas/Effort" }
       responses:
         "200":
           description: 更新后的任务
@@ -67,7 +76,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       operationId: deleteTask
-      summary: 删除一条任务
+      summary: 删除一条任务及其子任务
       responses:
         "204":
           description: 删除成功，响应体为空
@@ -79,6 +88,23 @@ components:
       description: 首尾空白会自动去除，去除后长度应为 1 至 200
       minLength: 1
       maxLength: 200
+    ParentId:
+      type: string
+      minLength: 1
+      description: 父任务 ID。子任务只能有一层，创建后固定归属于该父任务。
+    DueAt:
+      type: [string, "null"]
+      description: 服务端本地日期 YYYY-MM-DD 或分钟 YYYY-MM-DDTHH:mm。传 null 可清除截止日期。
+      pattern: '^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$'
+    Priority:
+      type: integer
+      minimum: 0
+      maximum: 3
+      description: 0 至 3 分别对应 P0 至 P3，P0 最高。缺省时按 P2 展示和排序。
+    Effort:
+      type: [string, "null"]
+      enum: [small, medium, large, null]
+      description: 工作量小、中、大。传 null 可清除工作量。
     Task:
       type: object
       required: [id, title, done]
@@ -86,6 +112,10 @@ components:
         id: { type: string, format: uuid }
         title: { $ref: "#/components/schemas/Title" }
         done: { type: boolean }
+        parentId: { $ref: "#/components/schemas/ParentId" }
+        dueAt: { $ref: "#/components/schemas/DueAt" }
+        priority: { $ref: "#/components/schemas/Priority" }
+        effort: { $ref: "#/components/schemas/Effort" }
     Error:
       type: object
       required: [error]
@@ -99,6 +129,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
       description: 任务不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: 父任务不存在或子任务层级无效
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
